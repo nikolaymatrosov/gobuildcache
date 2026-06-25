@@ -27,6 +27,10 @@ type S3Config struct {
 	SecretAccessKey string
 	SessionToken    string
 	UsePathStyle    bool
+	// Endpoint optionally overrides the S3 endpoint URL, allowing the use of
+	// S3-compatible object stores (e.g. MinIO, Ceph, Cloudflare R2). When empty,
+	// the AWS SDK resolves the standard AWS S3 endpoint from the region.
+	Endpoint string
 }
 
 // S3 implements Backend using AWS S3.
@@ -66,6 +70,9 @@ func NewS3(bucket, prefix string, awsCfg S3Config) (*S3, error) {
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		if awsCfg.UsePathStyle {
 			o.UsePathStyle = true
+		}
+		if awsCfg.Endpoint != "" {
+			o.BaseEndpoint = aws.String(awsCfg.Endpoint)
 		}
 	})
 

@@ -293,6 +293,7 @@ func TestResolveS3Config(t *testing.T) {
 			"AWS_ACCESS_KEY_ID", "GOBUILDCACHE_AWS_ACCESS_KEY_ID",
 			"AWS_SECRET_ACCESS_KEY", "GOBUILDCACHE_AWS_SECRET_ACCESS_KEY",
 			"AWS_SESSION_TOKEN", "GOBUILDCACHE_AWS_SESSION_TOKEN",
+			"S3_ENDPOINT", "GOBUILDCACHE_S3_ENDPOINT",
 		} {
 			t.Setenv(key, "")
 		}
@@ -304,8 +305,48 @@ func TestResolveS3Config(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.Region != "" || cfg.AccessKeyID != "" || cfg.SecretAccessKey != "" || cfg.SessionToken != "" {
+		if cfg.Region != "" || cfg.AccessKeyID != "" || cfg.SecretAccessKey != "" || cfg.SessionToken != "" || cfg.Endpoint != "" {
 			t.Errorf("expected empty config, got %+v", cfg)
+		}
+	})
+
+	t.Run("resolves S3_ENDPOINT from prefixed env var", func(t *testing.T) {
+		clearAWSEnv(t)
+		t.Setenv("GOBUILDCACHE_S3_ENDPOINT", "https://minio.internal:9000")
+
+		cfg, err := resolveS3Config()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Endpoint != "https://minio.internal:9000" {
+			t.Errorf("Endpoint = %q, want %q", cfg.Endpoint, "https://minio.internal:9000")
+		}
+	})
+
+	t.Run("falls back to unprefixed S3_ENDPOINT", func(t *testing.T) {
+		clearAWSEnv(t)
+		t.Setenv("S3_ENDPOINT", "https://s3.example.com")
+
+		cfg, err := resolveS3Config()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Endpoint != "https://s3.example.com" {
+			t.Errorf("Endpoint = %q, want %q", cfg.Endpoint, "https://s3.example.com")
+		}
+	})
+
+	t.Run("prefixed S3_ENDPOINT takes precedence over unprefixed", func(t *testing.T) {
+		clearAWSEnv(t)
+		t.Setenv("S3_ENDPOINT", "https://unprefixed.example.com")
+		t.Setenv("GOBUILDCACHE_S3_ENDPOINT", "https://prefixed.example.com")
+
+		cfg, err := resolveS3Config()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Endpoint != "https://prefixed.example.com" {
+			t.Errorf("Endpoint = %q, want %q", cfg.Endpoint, "https://prefixed.example.com")
 		}
 	})
 

@@ -66,6 +66,23 @@ go test ./...
 
 > **Note**: All configuration environment variables support both `GOBUILDCACHE_<KEY>` and `<KEY>` forms (e.g., both `GOBUILDCACHE_S3_BUCKET` and `S3_BUCKET` work). The prefixed version takes precedence if both are set. The prefixed form is strongly recommended for AWS variables (`GOBUILDCACHE_AWS_REGION`, `GOBUILDCACHE_AWS_ACCESS_KEY_ID`, `GOBUILDCACHE_AWS_SECRET_ACCESS_KEY`, `GOBUILDCACHE_AWS_SESSION_TOKEN`) — by using the prefixed form instead of the standard `AWS_*` variables, you avoid those values being inherited by other processes in the same environment (e.g., test binaries spawned by `go test`). If the prefixed variable is set to an empty string, it falls through to the unprefixed version (or default).
 
+#### Using S3-compatible storage (MinIO, Ceph, R2, etc.)
+
+`gobuildcache` can target any S3-compatible object store by setting `GOBUILDCACHE_S3_ENDPOINT` to the service's endpoint URL. Most non-AWS S3 implementations require path-style addressing, which you enable with `GOBUILDCACHE_AWS_S3_USE_PATH_STYLE=true`.
+
+```bash
+export GOCACHEPROG=gobuildcache
+export GOBUILDCACHE_BACKEND_TYPE=s3
+export GOBUILDCACHE_S3_BUCKET=$BUCKET_NAME
+export GOBUILDCACHE_S3_ENDPOINT=https://minio.internal:9000
+export GOBUILDCACHE_AWS_S3_USE_PATH_STYLE=true
+export GOBUILDCACHE_AWS_REGION=us-east-1
+export GOBUILDCACHE_AWS_ACCESS_KEY_ID=$ACCESS_KEY
+export GOBUILDCACHE_AWS_SECRET_ACCESS_KEY=$SECRET_KEY
+go build ./...
+go test ./...
+```
+
 ### Using Google Cloud Storage (GCS)
 
 ```bash
@@ -292,6 +309,8 @@ All environment variables support both `GOBUILDCACHE_<KEY>` and `<KEY>` forms (e
 | (env var only) | `GOBUILDCACHE_AWS_ACCESS_KEY_ID` | (none) | AWS access key for S3 backend (falls back to `AWS_ACCESS_KEY_ID`) |
 | (env var only) | `GOBUILDCACHE_AWS_SECRET_ACCESS_KEY` | (none) | AWS secret key for S3 backend (falls back to `AWS_SECRET_ACCESS_KEY`) |
 | (env var only) | `GOBUILDCACHE_AWS_SESSION_TOKEN` | (none) | AWS session token for temporary credentials (falls back to `AWS_SESSION_TOKEN`) |
+| (env var only) | `GOBUILDCACHE_S3_ENDPOINT` | (none) | Custom S3 endpoint URL for S3-compatible stores, e.g. MinIO (falls back to `S3_ENDPOINT`) |
+| (env var only) | `GOBUILDCACHE_AWS_S3_USE_PATH_STYLE` | `false` | Use path-style S3 addressing; usually required for S3-compatible stores (falls back to `AWS_S3_USE_PATH_STYLE`) |
 
 
 # How it Works

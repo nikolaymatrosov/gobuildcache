@@ -110,6 +110,7 @@ func runServerCommand() {
 		fmt.Fprintf(os.Stderr, "  CACHE_DIR        Local cache directory\n")
 		fmt.Fprintf(os.Stderr, "  S3_BUCKET        S3 bucket name\n")
 		fmt.Fprintf(os.Stderr, "  S3_PREFIX        S3 key prefix\n")
+		fmt.Fprintf(os.Stderr, "  S3_ENDPOINT      Custom S3 endpoint URL (for S3-compatible stores)\n")
 		fmt.Fprintf(os.Stderr, "  GCS_BUCKET       GCS bucket name\n")
 		fmt.Fprintf(os.Stderr, "  GCS_PREFIX       GCS object prefix\n")
 		fmt.Fprintf(os.Stderr, "  COMPRESSION      Enable LZ4 compression (true/false)\n")
@@ -171,6 +172,7 @@ func runClearCommand() {
 		fmt.Fprintf(os.Stderr, "  CACHE_DIR      Local cache directory\n")
 		fmt.Fprintf(os.Stderr, "  S3_BUCKET      S3 bucket name\n")
 		fmt.Fprintf(os.Stderr, "  S3_PREFIX      S3 key prefix\n")
+		fmt.Fprintf(os.Stderr, "  S3_ENDPOINT    Custom S3 endpoint URL (for S3-compatible stores)\n")
 		fmt.Fprintf(os.Stderr, "  GCS_BUCKET     GCS bucket name\n")
 		fmt.Fprintf(os.Stderr, "  GCS_PREFIX     GCS object prefix\n")
 		fmt.Fprintf(os.Stderr, "  S3_TMP_DIR     Local temp directory for S3 backend\n")
@@ -263,6 +265,7 @@ func runClearRemoteCommand() {
 		fmt.Fprintf(os.Stderr, "  BACKEND_TYPE   Backend type (disk, s3, gcs)\n")
 		fmt.Fprintf(os.Stderr, "  S3_BUCKET      S3 bucket name\n")
 		fmt.Fprintf(os.Stderr, "  S3_PREFIX      S3 key prefix\n")
+		fmt.Fprintf(os.Stderr, "  S3_ENDPOINT    Custom S3 endpoint URL (for S3-compatible stores)\n")
 		fmt.Fprintf(os.Stderr, "  GCS_BUCKET     GCS bucket name\n")
 		fmt.Fprintf(os.Stderr, "  GCS_PREFIX     GCS object prefix\n")
 		fmt.Fprintf(os.Stderr, "\nNote: Command-line flags take precedence over environment variables.\n")
@@ -461,6 +464,7 @@ func resolveS3Config() (backends.S3Config, error) {
 		SecretAccessKey: getEnvWithPrefix("AWS_SECRET_ACCESS_KEY", ""),
 		SessionToken:    getEnvWithPrefix("AWS_SESSION_TOKEN", ""),
 		UsePathStyle:    getEnvBoolWithPrefix("AWS_S3_USE_PATH_STYLE", false),
+		Endpoint:        getEnvWithPrefix("S3_ENDPOINT", ""),
 	}
 
 	// Validate that credentials are either both set or both unset.
