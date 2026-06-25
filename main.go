@@ -10,6 +10,7 @@ import (
 
 	"github.com/richardartoul/gobuildcache/pkg/backends"
 	"github.com/richardartoul/gobuildcache/pkg/locking"
+	_ "github.com/klauspost/compress/zstd"
 )
 
 // Global flags
