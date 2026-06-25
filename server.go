@@ -310,8 +310,9 @@ func (cp *CacheProg) Run() error {
 		fmt.Fprintf(os.Stderr, "  Unique action IDs: %d\n", uniqueActionIDs)
 		fmt.Fprintf(os.Stderr, "  Total backend bytes transferred: %s\n", formatBytes(backendBytesRead+backendBytesWritten))
 
-		// Print compression statistics if compression is enabled
-		if cp.compression != compressNone {
+		// Print compression statistics if compression is enabled, or if we
+		// decompressed legacy/foreign blobs even though writes are uncompressed.
+		if cp.compression != compressNone || decompressionBytesIn > 0 {
 			fmt.Fprintf(os.Stderr, "\nCompression statistics (codec: %s):\n", cp.compression)
 			if compressionBytesIn > 0 {
 				compressionRatio := float64(compressionBytesOut) / float64(compressionBytesIn) * 100

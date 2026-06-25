@@ -288,11 +288,27 @@ All environment variables support both `GOBUILDCACHE_<KEY>` and `<KEY>` forms (e
 | `-debug` | `GOBUILDCACHE_DEBUG` | `false` | Enable debug logging |
 | `-stats` | `GOBUILDCACHE_PRINT_STATS` | `false` | Print cache statistics on exit |
 | `-read-only` | `GOBUILDCACHE_READ_ONLY` | `false` | Read-only mode: allow cache reads but skip writes |
+| `-compression` | `GOBUILDCACHE_COMPRESSION` | `lz4` | Backend compression codec: `none`, `lz4`, or `zstd` (legacy `true`/`false` accepted, mapping to `lz4`/`none`) |
 | (env var only) | `GOBUILDCACHE_AWS_REGION` | (none) | AWS region for S3 backend (falls back to `AWS_REGION`) |
 | (env var only) | `GOBUILDCACHE_AWS_ACCESS_KEY_ID` | (none) | AWS access key for S3 backend (falls back to `AWS_ACCESS_KEY_ID`) |
 | (env var only) | `GOBUILDCACHE_AWS_SECRET_ACCESS_KEY` | (none) | AWS secret key for S3 backend (falls back to `AWS_SECRET_ACCESS_KEY`) |
 | (env var only) | `GOBUILDCACHE_AWS_SESSION_TOKEN` | (none) | AWS session token for temporary credentials (falls back to `AWS_SESSION_TOKEN`) |
 
+## Compression
+
+`gobuildcache` compresses cache entries before writing them to the backend, which reduces both storage cost and the bytes transferred to/from remote backends like S3. The codec is selected with the `-compression` flag or `GOBUILDCACHE_COMPRESSION` environment variable:
+
+| Value | Behavior |
+|-------|----------|
+| `lz4` (default) | LZ4 — very fast, modest compression ratio. |
+| `zstd` | zstd at its default level — noticeably better ratio than LZ4 at comparable speed. A good choice when the backend is remote and transfer/storage savings matter. |
+| `none` | No compression. |
+
+For backwards compatibility the legacy boolean values are still accepted: `true` maps to `lz4` and `false` maps to `none`.
+
+**Switching codecs is safe and needs no migration.** Decompression is driven by each blob's own frame header, not by the configured codec, so the server transparently reads entries written by any codec. Existing LZ4 caches keep working after switching to `zstd`, and caches containing a mix of codecs (e.g. during a rollout) are read correctly. Even with `-compression=none`, the server still decompresses any compressed entries it finds in the backend.
+
+When statistics are enabled (`-stats`), the compression section reports the active codec along with the compression ratio and space saved.
 
 # How it Works
 
