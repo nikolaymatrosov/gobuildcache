@@ -79,7 +79,7 @@ func compressData(data []byte, algo compressionAlgo) ([]byte, error) {
 			return nil, fmt.Errorf("failed to create zstd compressor: %w", err)
 		}
 		if _, err := w.Write(data); err != nil {
-			w.Close()
+			_ = w.Close()
 			return nil, fmt.Errorf("failed to write to zstd compressor: %w", err)
 		}
 		if err := w.Close(); err != nil {
@@ -90,7 +90,7 @@ func compressData(data []byte, algo compressionAlgo) ([]byte, error) {
 		var buf bytes.Buffer
 		w := lz4.NewWriter(&buf)
 		if _, err := w.Write(data); err != nil {
-			w.Close()
+			_ = w.Close()
 			return nil, fmt.Errorf("failed to write to LZ4 compressor: %w", err)
 		}
 		if err := w.Close(); err != nil {
