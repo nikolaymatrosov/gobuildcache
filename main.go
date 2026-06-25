@@ -10,7 +10,6 @@ import (
 
 	"github.com/richardartoul/gobuildcache/pkg/backends"
 	"github.com/richardartoul/gobuildcache/pkg/locking"
-	_ "github.com/klauspost/compress/zstd"
 )
 
 // Global flags
@@ -26,7 +25,7 @@ var (
 	gcsBucket    string
 	gcsPrefix    string
 	errorRate    float64
-	compression  bool
+	compression  string
 	asyncBackend bool
 	readOnly     bool
 )
@@ -76,7 +75,7 @@ func runServerCommand() {
 		gcsBucketDefault    = getEnvWithPrefix("GCS_BUCKET", "")
 		gcsPrefixDefault    = getEnvWithPrefix("GCS_PREFIX", "gobuildcache/")
 		errorRateDefault    = getEnvFloatWithPrefix("ERROR_RATE", 0.0)
-		compressionDefault  = getEnvBoolWithPrefix("COMPRESSION", true)
+		compressionDefault  = getEnvWithPrefix("COMPRESSION", "lz4")
 		asyncBackendDefault = getEnvBoolWithPrefix("ASYNC_BACKEND", true)
 		readOnlyDefault     = getEnvBoolWithPrefix("READ_ONLY", false)
 	)
@@ -91,7 +90,7 @@ func runServerCommand() {
 	serverFlags.StringVar(&gcsBucket, "gcs-bucket", gcsBucketDefault, "GCS bucket name (required for gcs backend) (env: GCS_BUCKET)")
 	serverFlags.StringVar(&gcsPrefix, "gcs-prefix", gcsPrefixDefault, "GCS object prefix (optional) (env: GCS_PREFIX)")
 	serverFlags.Float64Var(&errorRate, "error-rate", errorRateDefault, "Error injection rate (0.0-1.0) for testing error handling (env: ERROR_RATE)")
-	serverFlags.BoolVar(&compression, "compression", compressionDefault, "Enable LZ4 compression for backend storage (env: COMPRESSION)")
+	serverFlags.StringVar(&compression, "compression", compressionDefault, "Backend compression codec: none, lz4, zstd; legacy true/false accepted (env: COMPRESSION)")
 	serverFlags.BoolVar(&asyncBackend, "async-backend", asyncBackendDefault, "Enable async backend writer for non-blocking PUT operations (env: ASYNC_BACKEND)")
 	serverFlags.BoolVar(&readOnly, "read-only", readOnlyDefault, "Read-only mode: allow cache reads but skip writes (env: READ_ONLY)")
 
@@ -113,7 +112,7 @@ func runServerCommand() {
 		fmt.Fprintf(os.Stderr, "  S3_PREFIX        S3 key prefix\n")
 		fmt.Fprintf(os.Stderr, "  GCS_BUCKET       GCS bucket name\n")
 		fmt.Fprintf(os.Stderr, "  GCS_PREFIX       GCS object prefix\n")
-		fmt.Fprintf(os.Stderr, "  COMPRESSION      Enable LZ4 compression (true/false)\n")
+		fmt.Fprintf(os.Stderr, "  COMPRESSION      Backend compression codec: none, lz4, zstd (legacy true/false)\n")
 		fmt.Fprintf(os.Stderr, "  ASYNC_BACKEND    Enable async backend writer (true/false)\n")
 		fmt.Fprintf(os.Stderr, "  READ_ONLY        Read-only mode: allow reads, skip writes (true/false)\n")
 		fmt.Fprintf(os.Stderr, "\nNote: Command-line flags take precedence over environment variables.\n")
@@ -141,12 +140,12 @@ func runClearCommand() {
 	// Get defaults from environment variables.
 	// All variables support both GOBUILDCACHE_<KEY> and <KEY> forms, with prefixed taking precedence.
 	var (
-		clearFlags      = flag.NewFlagSet("clear", flag.ExitOnError)
-		debugDefault    = getEnvBoolWithPrefix("DEBUG", false)
-		backendDefault  = getEnvWithPrefix("BACKEND_TYPE", getEnv("BACKEND", "disk"))
-		cacheDirDefault = getEnvWithPrefix("CACHE_DIR", filepath.Join(os.TempDir(), "gobuildcache", "cache"))
-		s3BucketDefault = getEnvWithPrefix("S3_BUCKET", "")
-		s3PrefixDefault = getEnvWithPrefix("S3_PREFIX", "")
+		clearFlags       = flag.NewFlagSet("clear", flag.ExitOnError)
+		debugDefault     = getEnvBoolWithPrefix("DEBUG", false)
+		backendDefault   = getEnvWithPrefix("BACKEND_TYPE", getEnv("BACKEND", "disk"))
+		cacheDirDefault  = getEnvWithPrefix("CACHE_DIR", filepath.Join(os.TempDir(), "gobuildcache", "cache"))
+		s3BucketDefault  = getEnvWithPrefix("S3_BUCKET", "")
+		s3PrefixDefault  = getEnvWithPrefix("S3_PREFIX", "")
 		gcsBucketDefault = getEnvWithPrefix("GCS_BUCKET", "")
 		gcsPrefixDefault = getEnvWithPrefix("GCS_PREFIX", "")
 	)
@@ -331,7 +330,13 @@ func runServer() {
 		fmt.Fprintf(os.Stderr, "[INFO] Read-only mode enabled: cache reads allowed, writes skipped\n")
 	}
 
-	prog, err := NewCacheProg(backend, lockingGroup, cacheDir, debug, printStats, compression, readOnly)
+	compAlgo, err := parseCompressionAlgo(compression)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid compression setting: %v\n", err)
+		os.Exit(1)
+	}
+
+	prog, err := NewCacheProg(backend, lockingGroup, cacheDir, debug, printStats, compAlgo, readOnly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating cache program: %v\n", err)
 		os.Exit(1)

@@ -18,8 +18,6 @@ import (
 	"github.com/richardartoul/gobuildcache/pkg/backends"
 	"github.com/richardartoul/gobuildcache/pkg/locking"
 	"github.com/richardartoul/gobuildcache/pkg/metrics"
-
-	"github.com/pierrec/lz4/v4"
 )
 
 const (
@@ -72,7 +70,7 @@ type CacheProg struct {
 
 	debug       bool
 	printStats  bool
-	compression bool
+	compression compressionAlgo
 	readOnly    bool
 	logger      *slog.Logger
 
@@ -123,7 +121,7 @@ func NewCacheProg(
 	cacheDir string,
 	debug bool,
 	printStats bool,
-	compression bool,
+	compression compressionAlgo,
 	readOnly bool,
 ) (*CacheProg, error) {
 	logLevel := slog.LevelInfo
@@ -313,8 +311,8 @@ func (cp *CacheProg) Run() error {
 		fmt.Fprintf(os.Stderr, "  Total backend bytes transferred: %s\n", formatBytes(backendBytesRead+backendBytesWritten))
 
 		// Print compression statistics if compression is enabled
-		if cp.compression {
-			fmt.Fprintf(os.Stderr, "\nCompression statistics:\n")
+		if cp.compression != compressNone {
+			fmt.Fprintf(os.Stderr, "\nCompression statistics (codec: %s):\n", cp.compression)
 			if compressionBytesIn > 0 {
 				compressionRatio := float64(compressionBytesOut) / float64(compressionBytesIn) * 100
 				spaceSaved := compressionBytesIn - compressionBytesOut
@@ -458,9 +456,9 @@ func (cp *CacheProg) handlePut(req *Request) (Response, error) {
 			dataToStore     []byte
 			dataSize        int64
 		)
-		if cp.compression && req.BodySize > 0 {
+		if cp.compression != compressNone && req.BodySize > 0 {
 			compressStart := time.Now()
-			compressed, err := compressData(bodyData)
+			compressed, err := compressData(bodyData, cp.compression)
 			cp.latencyTracker.Record("put_compression", time.Since(compressStart))
 
 			if err != nil {
@@ -574,34 +572,44 @@ func (cp *CacheProg) handleGet(req *Request) (Response, error) {
 		// Backend hit - track bytes read from backend (compressed size)
 		cp.backendBytesRead.Add(size)
 
-		// Backend hit - decompress if needed, then write to local cache with metadata
+		// Backend hit - detect the codec from the blob's magic bytes and
+		// decompress if needed, then write to local cache with metadata.
+		// Detection (not configuration) drives this, so existing LZ4 caches and
+		// mixed-codec caches read correctly regardless of the configured codec.
 		defer body.Close()
 
 		var dataToCache io.Reader
 		var actualSize int64
 
-		if cp.compression && size > 0 {
-			// Read compressed data from backend
-			compressedData, err := io.ReadAll(body)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read compressed data from backend: %w", err)
+		if size > 0 {
+			// Peek the leading bytes to detect the codec without consuming the
+			// stream. Uncompressed blobs stream straight through; compressed
+			// blobs are read fully and decompressed in memory.
+			br := bufio.NewReader(body)
+			magic, _ := br.Peek(4) // returns fewer than 4 bytes near EOF; detectCodec handles that
+			if detectCodec(magic) == compressNone {
+				dataToCache = br
+				actualSize = size
+			} else {
+				compressedData, err := io.ReadAll(br)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read compressed data from backend: %w", err)
+				}
+
+				decompressStart := time.Now()
+				decompressed, _, err := decompressData(compressedData)
+				cp.latencyTracker.Record("get_decompression", time.Since(decompressStart))
+
+				if err != nil {
+					return nil, fmt.Errorf("failed to decompress data: %w", err)
+				}
+
+				cp.decompressionBytesIn.Add(size)
+				cp.decompressionBytesOut.Add(int64(len(decompressed)))
+
+				dataToCache = bytes.NewReader(decompressed)
+				actualSize = int64(len(decompressed))
 			}
-
-			// Decompress data
-			decompressStart := time.Now()
-			decompressed, err := decompressData(compressedData)
-			cp.latencyTracker.Record("get_decompression", time.Since(decompressStart))
-
-			if err != nil {
-				return nil, fmt.Errorf("failed to decompress data: %w", err)
-			}
-
-			// Track decompression statistics
-			cp.decompressionBytesIn.Add(size)
-			cp.decompressionBytesOut.Add(int64(len(decompressed)))
-
-			dataToCache = bytes.NewReader(decompressed)
-			actualSize = int64(len(decompressed))
 		} else {
 			dataToCache = body
 			actualSize = size
@@ -789,33 +797,4 @@ func formatBytes(bytes int64) string {
 		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
 	}
 	return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
-}
-
-// compressData compresses data using LZ4 and returns the compressed bytes.
-func compressData(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := lz4.NewWriter(&buf)
-
-	if _, err := writer.Write(data); err != nil {
-		writer.Close()
-		return nil, fmt.Errorf("failed to write to LZ4 compressor: %w", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close LZ4 compressor: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-// decompressData decompresses LZ4-compressed data.
-func decompressData(data []byte) ([]byte, error) {
-	reader := lz4.NewReader(bytes.NewReader(data))
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, reader); err != nil {
-		return nil, fmt.Errorf("failed to decompress LZ4 data: %w", err)
-	}
-
-	return buf.Bytes(), nil
 }

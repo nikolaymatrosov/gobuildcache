@@ -48,7 +48,7 @@ func createTestCacheProg(t *testing.T, readOnly bool) (*CacheProg, string) {
 	backend := backends.NewNoop()
 	locker := locking.NewNoOpGroup()
 
-	cp, err := NewCacheProg(backend, locker, cacheDir, false, false, false, readOnly)
+	cp, err := NewCacheProg(backend, locker, cacheDir, false, false, compressNone, readOnly)
 	if err != nil {
 		os.RemoveAll(cacheDir)
 		t.Fatalf("Failed to create CacheProg: %v", err)
